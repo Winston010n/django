@@ -79,3 +79,47 @@ class SimpleTaskCachingTests(TestCase):
         refreshed_response = self.client.get("/task/")
         refreshed_task = next(item for item in refreshed_response.data if item["id"] == task.id)
         self.assertTrue(refreshed_task["is_completed"])
+
+    def test_task_search_and_completion_filter(self):
+        completed_task = Task.objects.create(
+            title="Проверить домашнее задание",
+            description="Подготовить решение",
+            is_completed=True,
+        )
+        Task.objects.create(title="Купить молоко", description="Для завтрака")
+
+        search_response = self.client.get("/task/?search=домашнее")
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["id"] for item in search_response.data],
+            [completed_task.id],
+        )
+
+        description_response = self.client.get("/task/?search=батон")
+        self.assertEqual(
+            [item["id"] for item in description_response.data],
+            [self.task.id],
+        )
+
+        completed_response = self.client.get("/task/?is_completed=true")
+        self.assertEqual(
+            [item["id"] for item in completed_response.data],
+            [completed_task.id],
+        )
+
+        pending_response = self.client.get("/task/?is_completed=false")
+        self.assertEqual(
+            {item["id"] for item in pending_response.data},
+            {self.task.id, Task.objects.get(title="Купить молоко").id},
+        )
+
+        invalid_response = self.client.get("/task/?is_completed=yes")
+        self.assertEqual(invalid_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_filtered_task_list_does_not_use_unfiltered_cache(self):
+        cache.set("tasks", [{"id": -1, "title": "stale"}], 60)
+
+        response = self.client.get("/task/?search=хлеб")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [self.task.id])

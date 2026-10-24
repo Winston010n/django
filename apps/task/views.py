@@ -1,8 +1,9 @@
 from django.core.cache import cache
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,24 +21,54 @@ class TaskView(APIView):
     @extend_schema(
         tags=['Задачи'],
         summary='Список задач',
-        description='Публичный список задач. Результат кэшируется на 60 секунд.',
+        description=(
+            'Публичный список задач. Результат без фильтров кэшируется на 60 секунд. '
+            'Можно искать по названию и описанию и фильтровать по статусу выполнения.'
+        ),
+        parameters=[
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                description='Поиск по частичному совпадению в названии и описании.',
+            ),
+            OpenApiParameter(
+                name='is_completed',
+                type=OpenApiTypes.BOOL,
+                description='Фильтр по статусу выполнения: true или false.',
+            ),
+        ],
         responses={200: TaskSerializer(many=True)},
     )
     def get(self, request):
-        # 1. Проверяем, есть ли данные в кэше
-        tasks_data = cache.get("tasks")
+        search = request.query_params.get('search', '').strip()
+        is_completed = request.query_params.get('is_completed')
 
-        # Если данные есть в кэше — возвращаем их
-        if tasks_data is not None:
-            return Response(tasks_data)
+        if is_completed is not None:
+            is_completed = is_completed.strip().lower()
+            if is_completed not in {'true', 'false'}:
+                return Response(
+                    {'is_completed': ['Use "true" or "false".']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        # 2. Если данных нет в кэше — берем из базы данных
         tasks = Task.objects.all()
+        if search:
+            tasks = tasks.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+            )
+        if is_completed is not None:
+            tasks = tasks.filter(is_completed=(is_completed == 'true'))
+
+        if not search and is_completed is None:
+            tasks_data = cache.get("tasks")
+            if tasks_data is not None:
+                return Response(tasks_data)
+
         serializer = TaskSerializer(tasks, many=True)
         tasks_data = serializer.data
 
-        # 3. Сохраняем в кэш на 60 секунд
-        cache.set("tasks", tasks_data, 60)
+        if not search and is_completed is None:
+            cache.set("tasks", tasks_data, 60)
 
         return Response(tasks_data)
 
