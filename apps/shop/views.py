@@ -2,8 +2,8 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 
-from .models import Shop
-from .serializer import ShopSer
+from .models import Category, Product, Shop
+from .serializer import CategorySerializer, ProductSerializer, ShopSer
 from .pagination import ShopPagination
 from .permissions import IsOwnerOrReadOnly, IsAdminOrReadOnly
 
@@ -53,3 +53,21 @@ class ShopViewSets(viewsets.ModelViewSet):
         else:
             serializer.save()
 
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.select_related('shop', 'category').all()
+    serializer_class = ProductSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = {
+        'price': ['exact', 'gte', 'lte'],
+        'category': ['exact'],
+        'shop': ['exact'],
+    }
+    search_fields = ['title']
+    ordering_fields = ['price', 'title', 'id']
+    ordering = ['id']

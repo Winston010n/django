@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 
@@ -39,3 +40,39 @@ class SimpleTaskCachingTests(TestCase):
         # 6. Следующий GET вернет уже все 3 актуальные записи
         res3 = self.client.get("/task/")
         self.assertEqual(len(res3.data), 3)
+
+    def test_deadline_status_grouping_and_patch_cache_invalidation(self):
+        deadline = timezone.now() + timezone.timedelta(days=2, hours=1)
+        task = Task.objects.create(
+            title="Finish homework",
+            deadline=deadline,
+        )
+        overdue_task = Task.objects.create(
+            title="Past deadline",
+            deadline=timezone.now() - timezone.timedelta(minutes=1),
+        )
+
+        task_response = self.client.get("/task/")
+        task_payload = {item["id"]: item for item in task_response.data}
+        self.assertEqual(task_payload[task.id]["time_remaining"], "2 days left")
+        self.assertEqual(
+            task_payload[overdue_task.id]["time_remaining"],
+            "Дедлайн просрочен",
+        )
+        self.assertEqual(task_payload[self.task.id]["time_remaining"], "Дедлайн не указан")
+
+        grouped_response = self.client.get("/task/grouped/")
+        date_key = timezone.localtime(deadline).date().isoformat()
+        self.assertEqual(grouped_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(grouped_response.data[date_key][0]["id"], task.id)
+
+        patch_response = self.client.patch(
+            f"/task/{task.id}/",
+            {"is_completed": True},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(cache.get("tasks"))
+        refreshed_response = self.client.get("/task/")
+        refreshed_task = next(item for item in refreshed_response.data if item["id"] == task.id)
+        self.assertTrue(refreshed_task["is_completed"])

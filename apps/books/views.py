@@ -1,18 +1,18 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
-from .models import Books
-from .serializers import BooksSerializers
+from .models import Books, Library
+from .serializers import BooksSerializers, LibrarySerializer
 
-Books = ['Книга']
+BOOK_TAGS = ['Книга']
 
 class BookListApi(APIView):
 
     @extend_schema(
-            tags=Books,
+            tags=BOOK_TAGS,
             summary='СПИСОК ВСЕХ КНИГ',
             responses={200: BooksSerializers(many=True)}
     )
@@ -22,7 +22,7 @@ class BookListApi(APIView):
         return Response(serializer.data)
 
     @extend_schema(
-            tags=Books,
+            tags=BOOK_TAGS,
             summary='Добавить книгу в список',
             request=BooksSerializers,
             responses={201: BooksSerializers}
@@ -32,3 +32,8 @@ class BookListApi(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class LibraryViewSet(viewsets.ModelViewSet):
+    queryset = Library.objects.prefetch_related('books').all()
+    serializer_class = LibrarySerializer
