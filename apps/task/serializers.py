@@ -19,7 +19,7 @@ class TaskSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id",)
 
-    def get_time_remaining(self, task):
+    def get_time_remaining(self, task) -> str:
         if task.deadline is None:
             return "Дедлайн не указан"
 

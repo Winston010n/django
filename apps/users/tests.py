@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
@@ -31,6 +32,59 @@ class UserAuthenticationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['user']['username'], 'newuser')
         self.assertTrue(User.objects.filter(username='newuser').exists())
+        self.assertIn('jwt', response.data['tokens'])
+        self.assertTrue(Token.objects.filter(user__username='newuser').exists())
+
+    def test_django_token_login_and_logout(self):
+        response = self.client.post(
+            reverse('token'),
+            {'username': 'existinguser', 'password': self.user_password},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        token = response.data['token']
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token}')
+        profile_response = self.client.get(self.profile_url)
+        self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
+
+        logout_response = self.client.post(reverse('token-out'))
+        self.assertEqual(logout_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Token.objects.filter(key=token).exists())
+
+    def test_jwt_login_refresh_and_logout(self):
+        login_response = self.client.post(
+            reverse('jwt-login'),
+            {'username': 'existinguser', 'password': self.user_password},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        access = login_response.data['access']
+        refresh = login_response.data['refresh']
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access}')
+        profile_response = self.client.get(self.profile_url)
+        self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
+
+        refresh_response = self.client.post(
+            reverse('jwt-refresh'),
+            {'refresh': refresh},
+            format='json',
+        )
+        self.assertEqual(refresh_response.status_code, status.HTTP_200_OK)
+
+        logout_response = self.client.post(
+            reverse('jwt-logout'),
+            {'refresh': refresh},
+            format='json',
+        )
+        self.assertEqual(logout_response.status_code, status.HTTP_200_OK)
+        revoked_refresh_response = self.client.post(
+            reverse('jwt-refresh'),
+            {'refresh': refresh},
+            format='json',
+        )
+        self.assertEqual(revoked_refresh_response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_register_password_mismatch(self):
         data = {
@@ -89,4 +143,3 @@ class UserAuthenticationTests(TestCase):
         self.client.force_authenticate(user=self.user)
         response = self.client.post(self.logout_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-

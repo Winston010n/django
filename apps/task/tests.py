@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.core.cache import cache
+from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -10,6 +11,8 @@ from .models import Task
 class SimpleTaskCachingTests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        user = User.objects.create_user(username="task-owner", password="StrongPassword123")
+        self.client.force_authenticate(user=user)
         cache.clear()
         self.task = Task.objects.create(
             title="Купить хлеб",

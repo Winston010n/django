@@ -1,6 +1,8 @@
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,8 +12,17 @@ from .serializers import TaskSerializer
 
 
 class TaskView(APIView):
-    permission_classes = [permissions.AllowAny]
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
+    @extend_schema(
+        tags=['Задачи'],
+        summary='Список задач',
+        description='Публичный список задач. Результат кэшируется на 60 секунд.',
+        responses={200: TaskSerializer(many=True)},
+    )
     def get(self, request):
         # 1. Проверяем, есть ли данные в кэше
         tasks_data = cache.get("tasks")
@@ -30,6 +41,13 @@ class TaskView(APIView):
 
         return Response(tasks_data)
 
+    @extend_schema(
+        tags=['Задачи'],
+        summary='Создать задачу',
+        description='Требуется аутентификация. Создание сбрасывает кэш списка задач.',
+        request=TaskSerializer,
+        responses={201: TaskSerializer},
+    )
     def post(self, request):
         serializer = TaskSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -44,6 +62,12 @@ class TaskView(APIView):
 class GroupedTaskView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=['Задачи'],
+        summary='Сгруппировать задачи по дедлайну',
+        description='Публичный запрос. Возвращает объект, где ключи — даты дедлайнов.',
+        responses={200: OpenApiResponse(response=OpenApiTypes.OBJECT, description='Словарь «дата: список задач».')},
+    )
     def get(self, request):
         grouped_tasks = {}
         for task in Task.objects.order_by('deadline', 'id'):
@@ -60,13 +84,19 @@ class GroupedTaskView(APIView):
 
 
 class TaskDetailView(APIView):
-    permission_classes = [permissions.AllowAny]
+    serializer_class = TaskSerializer
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
+    @extend_schema(tags=['Задачи'], summary='Получить задачу', description='Публичный просмотр одной задачи.', responses={200: TaskSerializer})
     def get(self, request, pk):
         task = get_object_or_404(Task, pk=pk)
         serializer = TaskSerializer(task)
         return Response(serializer.data)
 
+    @extend_schema(tags=['Задачи'], summary='Полностью обновить задачу', description='Требуется аутентификация. Обновляет все редактируемые поля.', request=TaskSerializer, responses={200: TaskSerializer})
     def put(self, request, pk):
         task = get_object_or_404(Task, pk=pk)
         serializer = TaskSerializer(task, data=request.data)
@@ -77,6 +107,7 @@ class TaskDetailView(APIView):
         cache.delete("tasks")
         return Response(serializer.data)
 
+    @extend_schema(tags=['Задачи'], summary='Частично обновить задачу', description='Требуется аутентификация. Сбрасывает кэш задач.', request=TaskSerializer, responses={200: TaskSerializer})
     def patch(self, request, pk):
         task = get_object_or_404(Task, pk=pk)
         serializer = TaskSerializer(task, data=request.data, partial=True)
@@ -86,6 +117,7 @@ class TaskDetailView(APIView):
         cache.delete("tasks")
         return Response(serializer.data)
 
+    @extend_schema(tags=['Задачи'], summary='Удалить задачу', description='Требуется аутентификация. Удаление сбрасывает кэш.')
     def delete(self, request, pk):
         task = get_object_or_404(Task, pk=pk)
         task.delete()

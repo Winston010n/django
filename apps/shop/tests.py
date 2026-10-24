@@ -1,12 +1,15 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
+from django.contrib.auth.models import User
 
 from .models import Category, Product, Shop
 
 
 class ProductApiTests(APITestCase):
     def test_product_crud_and_filters(self):
-        shop = Shop.objects.create(name="Market", color="blue")
+        user = User.objects.create_user(username="shopper", password="StrongPassword123")
+        self.client.force_authenticate(user=user)
+        shop = Shop.objects.create(name="Market", color="blue", user=user)
         category_response = self.client.post(
             "/shop/categories/",
             {"name": "Books", "description": ""},

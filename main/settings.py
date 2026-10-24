@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_filters', ###
     'rest_framework',
+    'rest_framework.authtoken',
+    'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
 
     'apps.api',#
@@ -139,12 +141,8 @@ CACHES = {
 
 # Настройки Django Rest Framework
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
-    ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework.authentication.TokenAuthentication', ####
@@ -163,16 +161,32 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=15),
-    'AUTHHEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
 SPECTACULAR_SETTINGS = {#######
-    'TITLE': "Документация для FRONTEND",
-    'DESCRIPTION': "Интерактивная документация Swagger / OpenAPI",
+    'TITLE': "Документация REST API",
+    'DESCRIPTION': (
+        "Документация по API управления пользователями, магазинами, товарами, "
+        "книгами и задачами. Защищённые запросы поддерживают Django Token "
+        "(`Authorization: Token <ключ>`) и JWT "
+        "(`Authorization: Bearer <access-токен>`)."
+    ),
     'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SHEMA': False,
+    'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
+    'SWAGGER_UI_SETTINGS': {
+        'persistAuthorization': True,
+        'displayRequestDuration': True,
+        'filter': True,
+        'tagsSorter': 'alpha',
+        'operationsSorter': 'alpha',
+    },
     'TAGS': [
-        {'name': 'Пользователи(Users)', 'description': 'Регистрация Профили и Логин'}
+        {'name': 'Пользователи', 'description': 'Регистрация, аутентификация и профиль'},
+        {'name': 'Задачи', 'description': 'Задачи, дедлайны и группировка'},
+        {'name': 'Книги и библиотеки', 'description': 'Книги и их библиотеки'},
+        {'name': 'Магазины', 'description': 'Магазины и каталог товаров'},
+        {'name': 'Служебные', 'description': 'Информация о проекте'},
     ]
 }
